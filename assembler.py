@@ -2,79 +2,82 @@ from instructions import INSTRUCTIONS
 
 
 def parse_line(line: str, line_no: int):
-    parts = [p.strip() for p in line.split(",")]
+    """Парсит одну строку ассемблерного кода"""
+    line = line.strip()
+
+    if not line or line.startswith('#'):
+        return None
+
+    parts = [part.strip() for part in line.split(',')]
 
     if not parts:
-        raise ValueError(f"Пустая строка {line_no}")
+        return None
 
-    mnemonic = parts[0].upper()
+    mnemonic = parts[0].strip().upper()
 
     if mnemonic not in INSTRUCTIONS:
-        raise ValueError(f"Неизвестная команда '{mnemonic}' (строка {line_no})")
+        raise ValueError(f"Неизвестная команда '{mnemonic}' в строке {line_no}")
 
     spec = INSTRUCTIONS[mnemonic]
-    fields = spec["fields"]
 
-    if len(parts) - 1 != len(fields):
-        raise ValueError(
-            f"{mnemonic}: ожидалось {len(fields)} аргументов, "
-            f"получено {len(parts) - 1} (строка {line_no})"
-        )
+    if len(parts) - 1 != len(spec['fields']):
+        raise ValueError(f"Команда '{mnemonic}' требует {len(spec['fields'])} аргументов")
 
-    values = []
-    for i, part in enumerate(parts[1:], start=1):
+    args = []
+    for arg in parts[1:]:
+        arg = arg.strip()
         try:
-            # Поддержка разных форматов чисел: десятичный, шестнадцатеричный
-            if part.startswith("0x"):
-                values.append(int(part[2:], 16))
-            elif part.startswith("Фx"):  # Поддержка формата из спецификации
-                values.append(int(part[2:], 16))
+            if arg.startswith('0x'):
+                args.append(int(arg[2:], 16))
+            elif arg.startswith('Фx'):
+                args.append(int(arg[2:], 16))
             else:
-                values.append(int(part))
+                args.append(int(arg))
         except ValueError:
-            raise ValueError(f"Неверный аргумент '{part}' (строка {line_no}, аргумент {i})")
+            raise ValueError(f"Неверный аргумент: {arg}")
 
-    instr = {
-        "mnemonic": mnemonic,
-        "opcode": spec["opcode"],
-        "A": spec["opcode"],
-    }
+    instruction = {'mnemonic': mnemonic}
 
-    for name, value in zip(fields, values):
-        instr[name] = value
+    # Добавляем поле A (опкод)
+    instruction['A'] = spec['opcode']
 
-    return instr
+    # Добавляем остальные поля
+    for field, value in zip(spec['fields'], args):
+        instruction[field] = value
+
+    return instruction
 
 
 def assemble(text: str):
+    """Ассемблирует текст программы"""
     program = []
 
-    for i, line in enumerate(text.splitlines(), start=1):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
+    for i, line in enumerate(text.split('\n'), 1):
         try:
-            program.append(parse_line(line, i))
+            instr = parse_line(line, i)
+            if instr is not None:
+                program.append(instr)
         except ValueError as e:
             print(f"Ошибка в строке {i}: {e}")
-            raise
+            return None
 
     return program
 
 
-def format_instruction_for_test(instr):
-    """Форматирование инструкции для тестового вывода как в спецификации"""
-    spec = INSTRUCTIONS[instr["mnemonic"]]
+def format_program_for_test(program):
+    """Форматирует программу для вывода как в тестах спецификации"""
+    if not program:
+        return ""
 
-    result = f"{instr['mnemonic']}: "
-    fields = []
+    output = []
+    for i, instr in enumerate(program, 1):
+        fields = [f"A={instr['A']}"]
 
-    # Всегда начинаем с поля A (опкод)
-    fields.append(f"A={instr['A']}")
+        # Добавляем поля в порядке B, C, D
+        for field in ['B', 'C', 'D']:
+            if field in instr:
+                fields.append(f"{field}={instr[field]}")
 
-    # Добавляем остальные поля
-    for field in spec["fields"]:
-        if field in instr:
-            fields.append(f"{field}={instr[field]}")
+        output.append(f"Инструкция {i}: {', '.join(fields)}")
 
-    return result + ", ".join(fields)
+    return '\n'.join(output)
